@@ -1,171 +1,163 @@
-source("penman_horario.R")
+# ==============================================================================
+# MAIN PIPELINE - ANN Weather Station
+# ==============================================================================
+# Script principal para estimativa de evapotranspiração usando redes neurais
+
+# Load dependencies
 library(dplyr)
 library(plyr)
 library(Metrics)
 library(xlsx)
-require(neuralnet)
+library(neuralnet)
 
-header = 11
+# Load modules
+source("config/model_config.R")
+source("src/infrastructure/data_loader.R")
+source("src/infrastructure/file_exporter.R")
+source("src/services/data_preprocessor.R")
+source("src/services/neural_network_trainer.R")
 
-cabecalho = read.csv(file = 'dados.csv', header = T, fill = TRUE, sep = ";")
-lat = as.numeric(unlist(strsplit(cabecalho[2, 1], " "))[2])
-long = as.numeric(unlist(strsplit(cabecalho[3, 1], " "))[2])
-alt = as.numeric(unlist(strsplit(cabecalho[4, 1], " "))[2])
+# ==============================================================================
+# 1. LOAD DATA
+# ==============================================================================
+message("=== CARREGANDO DADOS ===")
 
+# Load station metadata
+metadata <- load_station_metadata(DATA_FILE)
+message(sprintf("Estação: Lat %.4f, Lon %.4f, Alt %.1fm", 
+                metadata$latitude, metadata$longitude, metadata$altitude))
 
-df = read.csv(file = 'dados.csv', skip = header-1, header = T, fill = TRUE, sep = ";")
-df <- dplyr::rename(
-          df, 
-          ETo = X,
-          data = Data.Medicao,
-          hora = Hora.Medicao,
-          precipitacao = PRECIPITACAO.TOTAL..HORARIO.mm.,
-          pressao_atmosferica = PRESSAO.ATMOSFERICA.AO.NIVEL.DA.ESTACAO..HORARIA.mB.,
-          pressao_atmosferica_maxima = PRESSAO.ATMOSFERICA.MAX.NA.HORA.ANT...AUT..mB.,
-          pressao_atmosferica_minima = PRESSAO.ATMOSFERICA.MIN..NA.HORA.ANT...AUT..mB.,
-          pressao_atmosferica_reduzida = PRESSAO.ATMOSFERICA.REDUZIDA.NIVEL.DO.MAR..AUT.mB.,
-          radiacao = `RADIACAO.GLOBAL.Kj.mÂ².`,
-          temperatura_cpu = TEMPERATURA.DA.CPU.DA.ESTACAO.Â.C.,
-          temperatura_bulbo_seco = TEMPERATURA.DO.AR...BULBO.SECO..HORARIA.Â.C.,
-          temperatura_ponto_de_orvalho = TEMPERATURA.DO.PONTO.DE.ORVALHO.Â.C.,
-          temperatura_maxima = TEMPERATURA.MAXIMA.NA.HORA.ANT...AUT..Â.C.,
-          temperatura_minima = TEMPERATURA.MINIMA.NA.HORA.ANT...AUT..Â.C.,
-          temperatura_orvalho_maxima = TEMPERATURA.ORVALHO.MAX..NA.HORA.ANT...AUT..Â.C.,
-          temperatura_orvalho_minima = TEMPERATURA.ORVALHO.MIN..NA.HORA.ANT...AUT..Â.C.,
-          tensao_bateria = TENSAO.DA.BATERIA.DA.ESTACAO.V.,
-          umidade_relativa_maxima = UMIDADE.REL..MAX..NA.HORA.ANT...AUT....,
-          umidade_relativa_minima = UMIDADE.REL..MIN..NA.HORA.ANT...AUT....,
-          umidade_relativa = UMIDADE.RELATIVA.DO.AR..HORARIA...,
-          vento_direcao = VENTO..DIRECAO.HORARIA..gr..Â...gr..,
-          vento_rajada = VENTO..RAJADA.MAXIMA.m.s.,
-          vento_velocidade = VENTO..VELOCIDADE.HORARIA.m.s.
-        )
-tempdata = c(nrow(df))
-temphora = c(nrow(df))
+# Load weather data
+df_raw <- load_weather_data(DATA_FILE, HEADER_SKIP_LINES)
 
-for(i in 4:(nrow(df))){
-  
-  tempdata[i+3] = df$data[i]
-  temphora[i+3] = df$hora[i]
-}
-for(i in 1:(nrow(df)-3)){
-  df$data[i] = tempdata[i]
-  df$hora[i] = temphora[i]
-}
+# Fix datetime shift issue (preserves original behavior)
+df_raw <- fix_datetime_shift(df_raw)
 
+# ==============================================================================
+# 2. CALCULATE REFERENCE ETO
+# ==============================================================================
+message("\n=== CALCULANDO ETo DE REFERÊNCIA (PENMAN-MONTEITH) ===")
 
-for (i in 1:nrow(df)) {
-  day = as.numeric(unlist(strsplit(df[i, 1], "-"))[3])
-  month = as.numeric(unlist(strsplit(df[i, 1], "-"))[2])
-  df[i,'mes'] = month
-  year = as.numeric(unlist(strsplit(df[i, 1], "-"))[1])
-  hour = as.numeric(df[i,2])
-  Rs = as.numeric(df[i,8])/1000
-  u2 = as.numeric(df[i,22]) 
-  RHhr = (as.numeric(df[i,17])+as.numeric(df[i,18]))/2
-  tMax = as.numeric(df[i,12])
-  tMin = as.numeric(df[i,13])
-  df[i,23] = penman_horario(tMax, tMin, alt, RHhr, u2, Rs, hour, day, month, year, lat, long)
-}
+df_with_eto <- calculate_reference_eto(df_raw, metadata)
 
-for (i in 1:ncol(df)) { 
-  df[,i]=as.numeric(df[,i])  
-}
+# ==============================================================================
+# 3. PREPARE DATA FOR TRAINING
+# ==============================================================================
+message("\n=== PREPARANDO DADOS PARA TREINAMENTO ===")
 
-df = df[,-c(1)]
+prepared_data <- prepare_training_data(df_with_eto, TRAIN_TEST_RATIO)
+train_set <- prepared_data$train
+test_set <- prepared_data$test
 
-dfFiltered = df[complete.cases(df),]
+message(sprintf("Dados de treino: %d registros", nrow(train_set)))
+message(sprintf("Dados de teste: %d registros", nrow(test_set)))
 
-normalize <- function(x) {
-  return ((x - min(x)) / (max(x) - min(x)))
-}
+# ==============================================================================
+# 4. TRAIN INDIVIDUAL MODELS
+# ==============================================================================
+message("\n=== TREINANDO MODELOS INDIVIDUAIS ===")
 
-
-dfFiltered = dfFiltered[sample(nrow(dfFiltered), nrow(dfFiltered)),]
-
-maxmindf <- as.data.frame(lapply(dfFiltered, normalize))
-scaleddata<-maxmindf
-trainset = scaleddata[1:((nrow(scaleddata)/5)*4),]
-testset = scaleddata[(1+nrow(trainset)):nrow(scaleddata),]
-
-algoritimos = c("backprop", "rprop+", "rprop-", "sag", "slr")
-
-for(i in 1:5){
-  nn = neuralnet(ETo~
-                  precipitacao+
-                  pressao_atmosferica+
-                  radiacao+
-                  temperatura_bulbo_seco+
-                  temperatura_ponto_de_orvalho+
-                  temperatura_maxima+
-                  temperatura_minima+
-                  umidade_relativa+
-                  vento_velocidade,
-                data = trainset[1:500,], 
-                hidden = c(8,5),
-                algorithm = algoritimos[i],
-                learningrate = 0.001,
-                rep=1,
-                err.fct = "sse",
-                act.fct = "logistic",
-                threshold = 0.05,
-                stepmax = 1e+04,
-                linear.output = TRUE
-                )
-  
-  temp_test <- subset(testset, select = c(precipitacao,
-                                            pressao_atmosferica,
-                                            radiacao,
-                                            temperatura_bulbo_seco,
-                                            temperatura_ponto_de_orvalho,
-                                            temperatura_maxima,
-                                            temperatura_minima,
-                                            umidade_relativa,
-                                            vento_velocidade
-                                          )
-                      )
- 
-  nn.results <- neuralnet::compute(nn, temp_test)
-  results <- data.frame(actual = testset$ETo, prediction = nn.results$net.result)
- 
-  predicted=results$prediction*(max(testset$ETo)-min(testset$ETo))+min(testset$ETo)
-  actual=results$actual*(max(testset$ETo)-min(testset$ETo))+min(testset$ETo)
-  deviation=(actual-predicted)^2
-  comparison=data.frame(predicted,actual,deviation)
-  
-  testset[,algoritimos[i]] = comparison$predicted
-}
-
-saida = testset[ , c(22, 24, 25, 26, 27, 28)]
- 
-colnames(saida)[3] <- "rpropmais"
-colnames(saida)[4] <- "rpropmenos"
-
-nn = neuralnet(ETo~
-                 backprop+
-                 rpropmais+
-                 rpropmenos+
-                 sag+
-                 slr,
-               data = saida[1:500,], 
-               hidden = c(8,5),
-               algorithm = "rprop-",
-               learningrate = 0.001,
-               rep=1,
-               err.fct = "sse",
-               act.fct = "logistic",
-               threshold = 0.05,
-               stepmax = 1e+04,
-               linear.output = TRUE
+model_config <- list(
+  hidden_layers = NN_HIDDEN_LAYERS,
+  learning_rate = NN_LEARNING_RATE,
+  threshold = NN_THRESHOLD,
+  step_max = NN_STEP_MAX,
+  activation_function = NN_ACTIVATION_FUNCTION,
+  error_function = NN_ERROR_FUNCTION,
+  sample_size = TRAINING_SAMPLE_SIZE
 )
-nn.results <- neuralnet::compute(nn, saida)
-results <- data.frame(actual = testset$ETo, prediction = nn.results$net.result)
 
-predicted=results$prediction*(max(testset$ETo)-min(testset$ETo))+min(testset$ETo)
-actual=results$actual*(max(testset$ETo)-min(testset$ETo))+min(testset$ETo)
-deviation=(actual-predicted)^2
-comparison=data.frame(predicted,actual,deviation)
-saida[, "combinado"] = comparison$predicted
+test_with_predictions <- train_multiple_algorithms(
+  train_data = train_set,
+  test_data = test_set,
+  algorithms = TRAINING_ALGORITHMS,
+  input_features = INPUT_FEATURES,
+  target_variable = TARGET_VARIABLE,
+  config = model_config
+)
 
-write.xlsx(saida,file="Aruivo de saída.xlsx")
+# ==============================================================================
+# 5. PREPARE DATA FOR ENSEMBLE
+# ==============================================================================
+message("\n=== PREPARANDO DADOS PARA ENSEMBLE ===")
 
+# Train the base models on training data to get predictions for ensemble training
+train_features <- extract_features(train_set, INPUT_FEATURES)
+
+train_with_predictions <- train_set
+for (algorithm in TRAINING_ALGORITHMS) {
+  message(paste("Gerando predições de treino para ensemble com:", algorithm))
+  
+  # Train model
+  model <- train_nn_model(
+    train_data = train_set,
+    input_features = INPUT_FEATURES,
+    target_variable = TARGET_VARIABLE,
+    algorithm = algorithm,
+    hidden_layers = NN_HIDDEN_LAYERS,
+    learning_rate = NN_LEARNING_RATE,
+    threshold = NN_THRESHOLD,
+    step_max = NN_STEP_MAX,
+    activation_function = NN_ACTIVATION_FUNCTION,
+    error_function = NN_ERROR_FUNCTION,
+    sample_size = TRAINING_SAMPLE_SIZE
+  )
+  
+  # Predict on training set for ensemble
+  predictions_normalized <- predict_nn(model, train_features)
+  predictions_denormalized <- denormalize_predictions(
+    predictions_normalized, 
+    train_set[[TARGET_VARIABLE]]
+  )
+  
+  train_with_predictions[, algorithm] <- predictions_denormalized
+}
+
+# Rename columns for consistency with original code
+ensemble_feature_names <- TRAINING_ALGORITHMS
+ensemble_feature_names[2] <- "rpropmais"   # rprop+
+ensemble_feature_names[3] <- "rpropmenos"  # rprop-
+
+# Select only ETo and predictions from base models
+ensemble_train <- train_with_predictions[, c(TARGET_VARIABLE, TRAINING_ALGORITHMS)]
+ensemble_test <- test_with_predictions[, c(TARGET_VARIABLE, TRAINING_ALGORITHMS)]
+
+# Rename columns
+colnames(ensemble_train) <- c(TARGET_VARIABLE, ensemble_feature_names)
+colnames(ensemble_test) <- c(TARGET_VARIABLE, ensemble_feature_names)
+
+# ==============================================================================
+# 6. TRAIN ENSEMBLE MODEL
+# ==============================================================================
+ensemble_test <- train_ensemble_model(
+  train_data = ensemble_train,
+  test_data = ensemble_test,
+  base_model_names = ensemble_feature_names,
+  target_variable = TARGET_VARIABLE,
+  ensemble_algorithm = ENSEMBLE_ALGORITHM,
+  config = model_config
+)
+
+# ==============================================================================
+# 7. EXPORT RESULTS
+# ==============================================================================
+message("\n=== EXPORTANDO RESULTADOS ===")
+
+# Prepare output dataframe
+output_data <- ensemble_test[, c(TARGET_VARIABLE, ensemble_feature_names, "ensemble")]
+
+# Rename columns for clarity
+colnames(output_data) <- c(
+  "ETo_Real",
+  "Predicao_Backprop",
+  "Predicao_RProp_Plus",
+  "Predicao_RProp_Minus",
+  "Predicao_SAG",
+  "Predicao_SLR",
+  "Predicao_Ensemble"
+)
+
+# Export to Excel
+export_to_excel(output_data, OUTPUT_FILE)
+
+message("\n=== PIPELINE CONCLUÍDO COM SUCESSO ===")
