@@ -1,7 +1,7 @@
 # ==============================================================================
 # DATA LOADER
 # ==============================================================================
-# Responsável por carregar e estruturar dados meteorológicos
+# Responsible for loading and structuring meteorological data
 
 #' Load weather station metadata
 #'
@@ -31,11 +31,10 @@ load_weather_data <- function(file_path, skip_lines) {
     header = TRUE, 
     fill = TRUE, 
     sep = ";",
-    fileEncoding = "latin1"  # Handle special characters
+    fileEncoding = "latin1"
   )
   
-  # Print actual column names for debugging
-  message("Colunas detectadas no CSV:")
+  message("Detected columns in CSV:")
   print(names(df))
   
   # Create a flexible mapping function
@@ -47,7 +46,7 @@ load_weather_data <- function(file_path, skip_lines) {
     return(NA)
   }
   
-  # Map columns flexibly
+  # Map columns flexibly (Portuguese input names preserved)
   column_mapping <- list(
     ETo = "X",
     data = find_column(c("Data.Medicao", "DATA")),
@@ -91,7 +90,7 @@ load_weather_data <- function(file_path, skip_lines) {
   
   missing_cols <- required_cols[!required_cols %in% names(df)]
   if (length(missing_cols) > 0) {
-    warning(paste("Colunas críticas não encontradas:", paste(missing_cols, collapse = ", ")))
+    warning(paste("Critical columns not found:", paste(missing_cols, collapse = ", ")))
   }
   
   return(df)

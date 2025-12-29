@@ -1,7 +1,7 @@
 # ==============================================================================
 # NEURAL NETWORK TRAINER
 # ==============================================================================
-# Serviços de treinamento de redes neurais
+# Neural network training services
 
 require(neuralnet)
 source("src/utils/normalization.R")
@@ -99,7 +99,7 @@ train_multiple_algorithms <- function(train_data,
   test_features <- extract_features(test_data, input_features)
   
   for (algorithm in algorithms) {
-    message(paste("Treinando modelo com algoritmo:", algorithm))
+    message(paste("Training model with algorithm:", algorithm))
     
     # Train model
     model <- train_nn_model(
@@ -146,7 +146,7 @@ train_ensemble_model <- function(train_data,
                                   ensemble_algorithm,
                                   config) {
   
-  message("Treinando modelo ensemble...")
+  message("Training ensemble model...")
   
   # Train ensemble
   ensemble_model <- train_nn_model(

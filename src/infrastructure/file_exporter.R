@@ -1,7 +1,7 @@
 # ==============================================================================
 # FILE EXPORTER
 # ==============================================================================
-# Responsável por exportar resultados
+# Responsible for exporting results
 
 #' Export results to Excel file
 #'
@@ -10,5 +10,5 @@
 #' @return NULL (side effect: creates file)
 export_to_excel <- function(data, file_path) {
   xlsx::write.xlsx(data, file = file_path, row.names = FALSE)
-  message(paste("Resultados exportados para:", file_path))
+  message(paste("Results exported to:", file_path))
 }

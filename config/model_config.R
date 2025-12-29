@@ -1,7 +1,7 @@
 # ==============================================================================
 # MODEL CONFIGURATION
 # ==============================================================================
-# Configurações centralizadas para os modelos de redes neurais
+# Centralized configuration for neural network models
 
 # Neural Network Architecture
 NN_HIDDEN_LAYERS <- c(8, 5)
@@ -18,10 +18,10 @@ TRAINING_ALGORITHMS <- c("backprop", "rprop+", "rprop-", "sag", "slr")
 ENSEMBLE_ALGORITHM <- "rprop-"
 
 # Data Split
-TRAIN_TEST_RATIO <- 0.8  # 80% treino, 20% teste
-TRAINING_SAMPLE_SIZE <- 500  # Amostra para treinamento dos modelos individuais
+TRAIN_TEST_RATIO <- 0.8  # 80% train, 20% test
+TRAINING_SAMPLE_SIZE <- 500  # Sample size for training individual models
 
-# Input Features
+# Input Features (Portuguese - data input names)
 INPUT_FEATURES <- c(
   "precipitacao",
   "pressao_atmosferica",
@@ -39,5 +39,5 @@ TARGET_VARIABLE <- "ETo"
 
 # File Paths
 DATA_FILE <- "data/raw/dados.csv"
-OUTPUT_FILE <- "output/resultados_predicao.xlsx"
+OUTPUT_FILE <- "output/prediction_results.xlsx"
 HEADER_SKIP_LINES <- 11

@@ -1,7 +1,7 @@
 # ==============================================================================
 # DATA PREPROCESSOR
 # ==============================================================================
-# Serviços de preprocessamento de dados para machine learning
+# Data preprocessing services for machine learning
 
 source("src/utils/normalization.R")
 source("src/domain/evapotranspiration_calculator.R")
@@ -21,7 +21,7 @@ calculate_reference_eto <- function(df, metadata) {
     
     # Show progress
     if (i %% progress_interval == 0) {
-      message(sprintf("Calculando ETo: %d/%d (%.1f%%)", i, total_rows, (i/total_rows)*100))
+      message(sprintf("Calculating ETo: %d/%d (%.1f%%)", i, total_rows, (i/total_rows)*100))
     }
     
     # Parse date components safely
@@ -71,7 +71,7 @@ calculate_reference_eto <- function(df, metadata) {
     })
   }
   
-  message("Cálculo de ETo concluído!")
+  message("ETo calculation completed!")
   return(df)
 }
 
@@ -93,12 +93,12 @@ prepare_training_data <- function(df, train_ratio = 0.8) {
   df_clean <- df[complete.cases(df), ]
   rows_after <- nrow(df_clean)
   
-  message(sprintf("Registros totais: %d", rows_before))
-  message(sprintf("Registros válidos: %d (%.1f%%)", rows_after, (rows_after/rows_before)*100))
-  message(sprintf("Registros removidos: %d (dados faltantes)", rows_before - rows_after))
+  message(sprintf("Total records: %d", rows_before))
+  message(sprintf("Valid records: %d (%.1f%%)", rows_after, (rows_after/rows_before)*100))
+  message(sprintf("Removed records: %d (missing data)", rows_before - rows_after))
   
   if (nrow(df_clean) < 100) {
-    stop("Poucos dados válidos! Verifique a qualidade do arquivo CSV.")
+    stop("Too few valid records! Check CSV file quality.")
   }
   
   # Shuffle data

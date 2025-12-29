@@ -3,11 +3,10 @@
 # z - Altitude
 # u2 - Wind speed at 2m
 # Rs - Solar radiation
-
 # lat - Latitude (Decimal degrees)
 # long - Longitude (Decimal degrees)
 
-penman_horario <- 
+penman_hourly <- 
   function(Tmax, Tmin, z, RHhr, u2, Rs, hour, day, month, year, lat, long){
     long = abs(long)
     
@@ -95,7 +94,7 @@ penman_horario <-
       Ra <- 0;
     }
     
-    stefanBoltzmanHourly <- (4.903*10^-9)*(Thr+273.16)^4/24
+    stefan_boltzman_hourly <- (4.903*10^-9)*(Thr+273.16)^4/24
     
     if(Rso<=0){
       Rnl = (2.043*10^(-10))*((Tmax+273.16)^4)*(0.34-0.14*sqrt(ea))*(1.35*(0.8)-0.35)
